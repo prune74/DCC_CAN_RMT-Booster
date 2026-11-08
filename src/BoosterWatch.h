@@ -34,10 +34,11 @@
 void BoosterWatch_begin();                          // DAC à 0 V au démarrage
 void BoosterWatch_onTelemetry(uint8_t id, uint8_t type, uint8_t st); // trame 0x102
 void BoosterWatch_loop();                           // à appeler dans loop()
+void BoosterWatch_onFailsafe(bool active);          // failsafe DCC : relâcher l'injection
 bool BoosterWatch_injecting();                      // injection active ?
-bool BoosterWatch_forced();                        // mode test "inject on" ?
-void BoosterWatch_forceInjection(bool on);         // TEST : forcer on/off
-                                                   // (prioritaire à l'auto)
+bool BoosterWatch_forced();                         // mode test "inject on" ?
+void BoosterWatch_forceInjection(bool on);          // TEST : forcer on/off
+                                                    // (prioritaire à l'auto)
 uint8_t BoosterWatch_worstState();                  // pire état aval : 0..3, 0xFF = inconnu
 
 // Nom complet reconstruit depuis (type, numéro) : (B,3) → "ID_B_03",

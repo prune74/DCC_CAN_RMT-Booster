@@ -99,6 +99,7 @@ void taskCan(void *pvParameters) {
             failsafeActive = true;
             CanBooster_flushDccBits();                    // ne rien perdre
             CanBooster_sendTelemetry(0, 0, BOOSTER_OFF);
+            BoosterWatch_onFailsafe(true);                // Relâcher l'injection
             StatusLed_setDcc(DCCLED_NO_DCC);
         }
 

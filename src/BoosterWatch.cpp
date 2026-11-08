@@ -25,6 +25,23 @@ static BoosterInfo s_boosters[DCCB_MAX_BOOSTERS];
 static bool         s_injecting = false;
 static bool         s_forced    = false;   // inject on/off manuel (test)
 
+// ---------------------------------------------------------------------------
+// Modules non-booster visibles sur le bus (hubs ID_H_xx, futures cartes
+// ID_S_nn/ID_D_nn...) : suivis pour l'AFFICHAGE uniquement — ils ne
+// participent ni à la surveillance d'injection, ni au pire état aval.
+// ---------------------------------------------------------------------------
+#define DCCB_MAX_OTHERS 8
+
+typedef struct {
+    uint8_t  type;      // C, S, D, H...
+    uint8_t  id;        // numéro dans son type
+    uint8_t  state;     // dernier état reçu (0..3, 0xFF = inconnu)
+    uint32_t lastMs;    // dernière trame
+    bool     used;
+} OtherInfo;
+
+static OtherInfo s_others[DCCB_MAX_OTHERS];
+
 static void setInjection(bool on) {
     if (on == s_injecting) return;
     s_injecting = on;
@@ -35,13 +52,34 @@ static void setInjection(bool on) {
 void BoosterWatch_begin() {
     memset(s_boosters, 0, sizeof(s_boosters));
     for (uint8_t i = 0; i < DCCB_MAX_BOOSTERS; i++) s_boosters[i].state = 0xFF;
+    memset(s_others, 0, sizeof(s_others));
+    for (uint8_t i = 0; i < DCCB_MAX_OTHERS; i++) s_others[i].state = 0xFF;
     dacWrite((uint8_t)PIN_DAC_INJECT, 0);   // injection OFF au démarrage
 }
 
 void BoosterWatch_onTelemetry(uint8_t id, uint8_t type, uint8_t st) {
-    // Seuls les BOOSTERS sont surveillés (autres types : futures cartes,
-    // gérées ailleurs). ID hors table (0 ou > max) : trame ignorée.
-    if (type != DCCB_TYPE_BOOSTER) return;
+    // Seuls les BOOSTERS sont surveillés (injection). Les autres types
+    // (hubs ID_H_xx, futures cartes) : enregistrés pour l'affichage seul.
+    if (type != DCCB_TYPE_BOOSTER) {
+        for (uint8_t i = 0; i < DCCB_MAX_OTHERS; i++) {
+            if (s_others[i].used && s_others[i].type == type && s_others[i].id == id) {
+                s_others[i].state  = st;
+                s_others[i].lastMs = millis();
+                return;
+            }
+        }
+        for (uint8_t i = 0; i < DCCB_MAX_OTHERS; i++) {
+            if (!s_others[i].used) {
+                s_others[i].type   = type;
+                s_others[i].id     = id;
+                s_others[i].state  = st;
+                s_others[i].lastMs = millis();
+                s_others[i].used   = true;
+                return;
+            }
+        }
+        return;   // table pleine : trame ignorée
+    }
     if (id == 0 || id > DCCB_MAX_BOOSTERS) return;
     BoosterInfo &b = s_boosters[id - 1];
 
@@ -96,6 +134,28 @@ void BoosterWatch_onTelemetry(uint8_t id, uint8_t type, uint8_t st) {
 }
 
 // ---------------------------------------------------------------------------
+// Failsafe DCC : le signal d'entrée disparaît (hub qui coupe le district,
+// LaBox à l'arrêt...). Le repli "injection" n'a plus de sens : on relâche
+// l'injection et on remet les compteurs à zéro pour repartir propre au
+// retour du DCC. Sans cela, un booster privé de DCC ne renvoie jamais les
+// trames OK de relâchement → injection maintenue à vie → district bloqué
+// côté hub (DS_COUPE sans fin).
+// Le mode test manuel (s_forced) reste prioritaire : pas de relâchement auto.
+// ---------------------------------------------------------------------------
+void BoosterWatch_onFailsafe(bool active) {
+    if (!active) return;                       // seul le DÉBUT du failsafe agit
+    if (s_forced) return;                      // test manuel : on ne touche pas
+    if (s_injecting) {
+        setInjection(false);
+        Serial.println("[WATCH] failsafe DCC : injection relâchée, compteurs RAZ");
+    }
+    for (uint8_t i = 0; i < DCCB_MAX_BOOSTERS; i++) {
+        s_boosters[i].faultCount = 0;
+        s_boosters[i].okCount    = 0;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Injection MANUELLE (commande CLI "inject on|off") : test du câblage
 // DAC → entrée intensité LaBox SANS attendre un vrai défaut aval.
 // Tant que s_forced est posé, la logique automatique ne peut pas relâcher
@@ -111,11 +171,16 @@ void BoosterWatch_forceInjection(bool on) {
 }
 
 void BoosterWatch_loop() {
-    // Boosters silencieux : état "inconnu" (sans relâcher l'injection)
+    // Modules silencieux : état "inconnu" (sans relâcher l'injection)
     uint32_t now = millis();
     for (uint8_t i = 0; i < DCCB_MAX_BOOSTERS; i++) {
         if (s_boosters[i].used && (now - s_boosters[i].lastMs > DCCB_TELEMETRY_STALE_MS)) {
             s_boosters[i].state = 0xFF;
+        }
+    }
+    for (uint8_t i = 0; i < DCCB_MAX_OTHERS; i++) {
+        if (s_others[i].used && (now - s_others[i].lastMs > DCCB_TELEMETRY_STALE_MS)) {
+            s_others[i].state = 0xFF;
         }
     }
 }
@@ -132,6 +197,7 @@ bool BoosterWatch_forced()    { return s_forced; }
 //   (B, 12) → "ID_B_12"
 //   (S, 1)  → "ID_S_01"    (future carte aiguillage)
 //   (D, 7)  → "ID_D_07"    (future carte détection)
+//   (H, 1)  → "ID_H_01"    (hub de distribution DCC_HUB_DISTRIB-Booster)
 // Types inconnus → lettre '?'. Renvoie la longueur de la chaîne.
 // ---------------------------------------------------------------------------
 uint8_t BoosterWatch_name(uint8_t type, uint8_t id, char *name) {
@@ -141,6 +207,7 @@ uint8_t BoosterWatch_name(uint8_t type, uint8_t id, char *name) {
         case DCCB_TYPE_BOOSTER:    letter = 'B'; break;
         case DCCB_TYPE_SWITCH:     letter = 'S'; break;
         case DCCB_TYPE_DETECTOR:    letter = 'D'; break;
+        case DCCB_TYPE_HUB:         letter = 'H'; break;
         default:                   letter = '?'; break;
     }
 
@@ -196,7 +263,16 @@ void BoosterWatch_dump(Print &out) {
                    s_boosters[i].faultCount >= DCCB_INJECT_CONFIRM_FRAMES
                        ? "  [DEFAUT CONFIRME]" : "");
     }
-    if (!any) out.println("Aucun booster aval vu sur le bus (0x102).");
+    for (uint8_t i = 0; i < DCCB_MAX_OTHERS; i++) {
+        if (!s_others[i].used) continue;
+        any = true;
+        BoosterWatch_name(s_others[i].type, s_others[i].id, name);
+        BoosterWatch_stateName(s_others[i].state, st);
+        out.printf("%s  %-8s  vu il y a %lu ms%s\n", name, st,
+                   (unsigned long)(millis() - s_others[i].lastMs),
+                   s_others[i].state == 0xFF ? "  [STALE]" : "");
+    }
+    if (!any) out.println("Aucun module vu sur le bus (0x102).");
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +280,8 @@ void BoosterWatch_dump(Print &out) {
 //   {"boosters":[{"id":3,"name":"ID_B_03","st":"OK","fault":0,"ok":0,
 //    "last_ms":123}],"injecting":false}
 // Une ligne compacte et stable : facile à parser, sans fioritures.
+// Les modules non-booster (ID_H_xx...) y apparaissent avec leur nom complet,
+// sans les champs fault/ok (réservés à la surveillance des boosters).
 // ---------------------------------------------------------------------------
 void BoosterWatch_dumpJson(Print &out) {
     char name[10], st[9];
@@ -225,10 +303,23 @@ void BoosterWatch_dumpJson(Print &out) {
                    s_boosters[i].faultCount, s_boosters[i].okCount,
                    (unsigned long)(now - s_boosters[i].lastMs));
     }
+    for (uint8_t i = 0; i < DCCB_MAX_OTHERS; i++) {
+        if (!s_others[i].used) continue;
+        if (!first) out.print(",");
+        first = false;
+
+        BoosterWatch_name(s_others[i].type, s_others[i].id, name);
+        BoosterWatch_stateName(s_others[i].state, st);
+
+        out.printf("{\"id\":%u,\"name\":\"%s\",\"st\":\"%s\",\"last_ms\":%lu}",
+                   s_others[i].id, name, st,
+                   (unsigned long)(now - s_others[i].lastMs));
+    }
     out.printf("],\"injecting\":%s}\n", s_injecting ? "true" : "false");
 }
 
 // Pire état aval, pour la LED 3 : FAULT > OVERHEAT > OFF > OK > inconnu
+// (seuls les boosters comptent — les hubs/autres modules ne l'influencent pas)
 uint8_t BoosterWatch_worstState() {
     bool anyUsed = false;
     uint8_t worst = 0xFF;

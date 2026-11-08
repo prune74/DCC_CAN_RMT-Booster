@@ -130,6 +130,7 @@
 //   type 1 (B) → ID_B_01..ID_B_nn : boosters de puissance
 //   type 2 (S) → ID_S_nn          : aiguillages / accessoires (réservé)
 //   type 3 (D) → ID_D_nn          : détection d'occupation (réservé)
+//   type 5 (H) → ID_H_nn          : hubs de distribution (EXT1/EXT2, DCC_HUB_DISTRIB-Booster)
 //   type 4..255 : libres pour extensions futures
 // Une ancienne trame DLC 4 (sans octet TYPE) est interprétée type BOOSTER.
 // ---------------------------------------------------------------------------
@@ -137,6 +138,7 @@
 #define DCCB_TYPE_BOOSTER    1 // B — boosters de puissance (surveillés)
 #define DCCB_TYPE_SWITCH     2 // S — aiguillages / accessoires (réservé)
 #define DCCB_TYPE_DETECTOR   3 // D — détection d'occupation (réservé)
+#define DCCB_TYPE_HUB        5 // H — hubs de distribution (EXT1/EXT2, DCC_HUB_DISTRIB-Booster)
 
 #define DCCB_MODULE_ID   0 // numéro du convertisseur (dans son type)
 #define DCCB_MODULE_TYPE DCCB_TYPE_CONVERTER
