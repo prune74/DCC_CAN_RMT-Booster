@@ -149,7 +149,6 @@
 
 #define DCCB_MODULE_ID   0 // numéro du convertisseur (dans son type)
 #define DCCB_MODULE_TYPE DCCB_TYPE_CONVERTER
-#define DCCB_MODULE_ID 0
 
 // Nombre maximum de boosters aval suivis individuellement (table en RAM).
 // Un booster dont l'ID dépasse cette valeur est ignoré.
