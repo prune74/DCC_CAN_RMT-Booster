@@ -8,8 +8,12 @@ Le signal DCC provient de la sortie **EXT1/EXT2 (0–3.3 V)** de la centrale
 [LaBox / CommandStation-EX](https://github.com/Locoduino/CommandStation-EX-LaBox),
 via un XOR SN74LVC1G86 sur GPIO 27.
 
-Basé sur la bibliothèque [prune74/CanUniversal](https://github.com/prune74/CanUniversal).
+Basé sur les bibliothèques :
+- [prune74/CanUniversal](https://github.com/prune74/CanUniversal) (pour le bus CAN)
+- **[prune74/Ws2812Universal](https://github.com/prune74/Ws2812Universal) (pour les LED WS2812, architecture CFC)**
 Version « ISR » (GPIO + interruption) : [prune74/DCC_CAN-Booster](https://github.com/prune74/DCC_CAN-Booster).
+
+---
 
 ## Pourquoi le RMT ?
 
@@ -25,6 +29,8 @@ Pour un signal DCC « très précis », le RMT est la voie royale sur ESP32 :
 le CPU ne participe plus à la mesure, donc plus aucune source de gigue
 logicielle ne peut fausser les demi-bits.
 
+---
+
 ## Architecture
 
 | Élément | Rôle |
@@ -35,17 +41,21 @@ logicielle ne peut fausser les demi-bits.
 | `taskCanRx` (core 1) | Sniffer CAN (commande `can on`) |
 | Failsafe | Perte DCC > 500 ms → `BOOSTER_OFF` (télémétrie) + bloc vidé |
 | Télémétrie | Toutes les 1 s sur l'ID 0x102 |
+| **Ws2812Universal (RMT TX, canal 0)** | Pilotage non bloquant des 3 LED d'état via la bibliothèque CFC |
 
 ```
-LaBox (CommandStation-EX)                ESP32                        Bus CAN
-┌─────────────────────┐   EXT1/EXT2    ┌───────────────────────────┐
-│  Sortie booster     │  0–3.3 V  ──►  │ XOR SN74LVC1G86 → GPIO27  │
-│  DCC + cutout       │                │        │                  │
-└─────────────────────┘                │   RMT RX (matériel, 1µs)  │
-                                       │ rmtTask → queue → taskCan │ ──► 500 kbit/s
-                                       │ TWAI : TX=5, RX=4         │      vers boosters aval
-                                       └───────────────────────────┘
+LaBox (CommandStation-EX)                ESP32                                              Bus CAN
+┌─────────────────────┐   EXT1/EXT2    ┌────────────────────────────────────────────────┐
+│  Sortie booster     │  0–3.3 V  ──►  │           XOR SN74LVC1G86 → GPIO27             │
+│  DCC + cutout       │                │                     │                          │
+└─────────────────────┘                │            RMT RX (matériel, 1µs)              │
+                                       │   rmtTask → queue → taskCan                    │ ──► 500 kbit/s
+                                       │   TWAI : TX=5, RX=4                            │     vers boosters aval
+                                       │ **Ws2812Universal : RMT TX canal 0 → GPIO 26** │
+                                       └────────────────────────────────────────────────┘
 ```
+
+---
 
 ## Câblage
 
@@ -60,6 +70,8 @@ LaBox (CommandStation-EX)                ESP32                        Bus CAN
 Le filtre anti-glitch est ici **matériel** (dans le RMT) : un RC n'est plus
 indispensable, mais reste recommandé en environnement électrique bruyant
 (proximité de moteurs, boosters de puissance).
+
+---
 
 ## Principe du décodage (NMRA S-9.1)
 
@@ -82,6 +94,8 @@ suivante — **aucun demi-bit n'est jamais perdu**.
 **RailCom** : ce module ne distribue pas le RailCom — il relaie uniquement la
 présence du cutout (ID 0x101) pour que le booster aval le régénère
 (nominal 454 µs) ou l'ignore. L'ID 0x103 est réservé à un usage futur.
+
+---
 
 ## Protocole CAN (IDs 11 bits) — identique à DCC_CAN-Booster
 
@@ -127,6 +141,8 @@ Le bloc part : à 16 bits (trame pleine), sur cutout, ou après 500 µs de
 silence DCC. Les boosters aval voient **exactement le même protocole** que
 la version ISR : les deux modules sont interchangeables sur le bus.
 
+---
+
 ## LED d'état WS2812 ×3 (GPIO 26)
 
 Trois LED WS2812 (strip, data sur GPIO 26) — un rôle chacune, donc **aucune
@@ -149,14 +165,17 @@ priorité exclusive** : tout est visible simultanément :
 | | **Orange fixe** | Surchauffe signalée par un booster |
 | | **Éteint** | Boosters à l'arrêt (BOOSTER_OFF) |
 
-Le pilotage se fait par le **canal RMT TX n° 0** (2 blocs mémoire pour les
-73 entrées) : le signal 800 kHz est généré par le matériel, le CPU ne
-remplit que les entrées au changement d'état (20 Hz max, < 0,2 % CPU).
+Le pilotage se fait par le **canal RMT TX n° 0** via la bibliothèque
+**[prune74/Ws2812Universal](https://github.com/prune74/Ws2812Universal)** (architecture CFC) :
+le signal 800 kHz est généré par le matériel, le CPU ne fait que mettre à jour
+le framebuffer via `Ws2812Bus` (non bloquant, < 0,2 % CPU).
 Le canal 7 reste dédié à la capture DCC, et le CAN (TWAI) est un
 périphérique totalement indépendant : **aucun impact sur le décodage ni
 sur le bus**. Câblage : data → GPIO 26, alimentation 5 V ou 3,3 V (masse
 commune), condensateur 100 nF près du strip recommandé. Gradation
 réglable via `DCCB_WS2812_BRIGHTNESS` dans `Config.h`.
+
+---
 
 ## Arrêt d'urgence : injection vers LaBox (repli global du segment)
 
@@ -191,6 +210,8 @@ n'alimente que le convertisseur.
 Seuils réglables dans `Config.h` : `DCCB_INJECT_DAC_VALUE`,
 `DCCB_INJECT_CONFIRM_FRAMES`, `DCCB_INJECT_RELEASE_FRAMES`.
 
+---
+
 ## Failsafe
 
 - Perte du signal DCC > 500 ms → bloc vidé, télémétrie `BOOSTER_OFF` (0x101
@@ -198,18 +219,26 @@ Seuils réglables dans `Config.h` : `DCCB_INJECT_DAC_VALUE`,
 - Retour du DCC → télémétrie `BOOSTER_OK`.
 - `bad > 0` en régime établi → état `BOOSTER_FAULT`.
 
+---
+
 ## Compilation (VSCode + PlatformIO)
 
-```
+```bash
 pio run
 pio run -t upload
 pio device monitor
 ```
 
 `platformio.ini` épingle `espressif32@6.9.0` (arduino-esp32 2.0.x) pour
-garantir le driver RMT legacy (`driver/rmt.h`). Configuration matérielle :
-`src/Pins.h` (broches), `src/Config.h` (canal RMT, tick, filtre, seuils,
-IDs, failsafe, bitrate).
+garantir le driver RMT legacy (`driver/rmt.h`). **Dépendances** :
+```ini
+lib_deps =
+    prune74/CanUniversal
+    prune74/Ws2812Universal  # Pilotage des LED WS2812 (architecture CFC)
+```
+Configuration matérielle : `src/Pins.h` (broches), `src/Config.h` (canal RMT, tick, filtre, seuils, IDs, failsafe, bitrate).
+
+---
 
 ## Commandes série (115200 bauds)
 
@@ -227,6 +256,8 @@ can filter 0x100 filtre le sniffer sur un ID (can filter off pour retirer)
 **Diagnostic sain** : `dropped=0` et `bad` stable (quelques unités au
 démarrage le temps de la première synchronisation, puis plus rien).
 
+---
+
 ## Limites connues
 
 - Le convertisseur ne mesure ni courant ni tension : sa télémétrie 0x102
@@ -236,6 +267,8 @@ démarrage le temps de la première synchronisation, puis plus rien).
 - Le cutout est transporté borné (START+END consécutifs avec la durée
   mesurée) : le booster aval régénère un cutout nominal — aucun contenu
   RailCom n'est transporté.
+
+---
 
 ## Auteur
 
