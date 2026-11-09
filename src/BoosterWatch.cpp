@@ -283,7 +283,7 @@ void BoosterWatch_dump(Print &out) {
 
 // ---------------------------------------------------------------------------
 // Variante JSON — destinée aux outils PC (journalisation, supervision) :
-//   {"boosters":[{"id":3,"name":"ID_B_03","st":"OK","fault":0,"ok":0,
+//   {"modules":[{"id":3,"name":"ID_B_03","st":"OK","fault":0,"ok":0,
 //    "last_ms":123}],"injecting":false}
 // Une ligne compacte et stable : facile à parser, sans fioritures.
 // Les modules non-booster (ID_H_xx...) y apparaissent avec leur nom complet,
