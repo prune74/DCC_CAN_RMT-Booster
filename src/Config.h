@@ -95,8 +95,10 @@
 // ---------------------------------------------------------------------------
 // LED d'état WS2812
 // ---------------------------------------------------------------------------
-// Pilotée par le canal RMT TX DCCB_RMT_TX_CHANNEL (génération matérielle du
-// signal 800 kHz : coût CPU quasi nul, aucune ISR, aucun impact sur le CAN).
+// Pilotée par la bibliothèque prune74/Ws2812Universal (canal RMT TX
+// DCCB_RMT_TX_CHANNEL via DccbWs2812Config.h : génération matérielle du
+// signal 800 kHz, émission non bloquante, gradation gérée par la
+// bibliothèque — coût CPU quasi nul, aucune ISR, aucun impact sur le CAN).
 // Le canal 7 reste dédié à la capture DCC en réception.
 #define DCCB_RMT_TX_CHANNEL RMT_CHANNEL_0
 #define DCCB_WS2812_BRIGHTNESS 64 // gradation globale, 0..255
@@ -130,15 +132,17 @@
 //   type 1 (B) → ID_B_01..ID_B_nn : boosters de puissance
 //   type 2 (S) → ID_S_nn          : aiguillages / accessoires (réservé)
 //   type 3 (D) → ID_D_nn          : détection d'occupation (réservé)
-//   type 5 (H) → ID_H_nn          : hubs de distribution (EXT1/EXT2, DCC_HUB_DISTRIB-Booster)
-//   type 4..255 : libres pour extensions futures
+//   type 5 (H) → ID_H_nn          : hubs de distribution
+//                                 (EXT1/EXT2, projet DCC_HUB_DISTRIB-Booster)
+//   types 4, 6..255 : libres pour extensions futures
 // Une ancienne trame DLC 4 (sans octet TYPE) est interprétée type BOOSTER.
 // ---------------------------------------------------------------------------
 #define DCCB_TYPE_CONVERTER 0 // C — ce module
 #define DCCB_TYPE_BOOSTER    1 // B — boosters de puissance (surveillés)
 #define DCCB_TYPE_SWITCH     2 // S — aiguillages / accessoires (réservé)
 #define DCCB_TYPE_DETECTOR   3 // D — détection d'occupation (réservé)
-#define DCCB_TYPE_HUB        5 // H — hubs de distribution (EXT1/EXT2, DCC_HUB_DISTRIB-Booster)
+#define DCCB_TYPE_HUB        5 // H — hubs de distribution (EXT1/EXT2,
+                               //     projet DCC_HUB_DISTRIB-Booster)
 
 #define DCCB_MODULE_ID   0 // numéro du convertisseur (dans son type)
 #define DCCB_MODULE_TYPE DCCB_TYPE_CONVERTER
@@ -149,3 +153,9 @@
 // L'ID étant un octet, le plafond théorique est 254 boosters ; chaque slot
 // coûte ~12 octets de RAM — ajuster librement selon le réseau.
 #define DCCB_MAX_BOOSTERS 32
+
+// Nombre maximum de modules NON-booster suivis pour l'affichage (hubs
+// ID_H_xx, futures cartes ID_S_nn/ID_D_nn...). Ils ne participent ni à
+// la surveillance d'injection, ni au pire état aval ; au-delà de cette
+// valeur, leurs trames sont ignorées silencieusement.
+#define DCCB_MAX_OTHERS 8

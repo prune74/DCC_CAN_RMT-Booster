@@ -31,7 +31,7 @@ enum LedBoostState : uint8_t {
     BLED_INJECT_TEST  // magenta clignot.: injection FORCÉE manuelle ("inject on")
 };
 
-void StatusLed_begin();                    // configure le canal RMT TX (canal 0)
+void StatusLed_begin();                    // initialise Ws2812Universal (canal 0)
 void StatusLed_setDcc(LedDccState st);    // état LED 1 (DCC)
 void StatusLed_setCan(LedCanState st);    // état LED 2 (CAN)
 void StatusLed_setBoost(LedBoostState st); // état LED 3 (boosters aval)

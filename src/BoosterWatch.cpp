@@ -29,8 +29,9 @@ static bool         s_forced    = false;   // inject on/off manuel (test)
 // Modules non-booster visibles sur le bus (hubs ID_H_xx, futures cartes
 // ID_S_nn/ID_D_nn...) : suivis pour l'AFFICHAGE uniquement — ils ne
 // participent ni à la surveillance d'injection, ni au pire état aval.
+// Table dimensionnée par DCCB_MAX_OTHERS dans Config.h (comme les autres
+// réglages). Au-delà : trames ignorées silencieusement.
 // ---------------------------------------------------------------------------
-#define DCCB_MAX_OTHERS 8
 
 typedef struct {
     uint8_t  type;      // C, S, D, H...
@@ -200,16 +201,20 @@ bool BoosterWatch_forced()    { return s_forced; }
 //   (H, 1)  → "ID_H_01"    (hub de distribution DCC_HUB_DISTRIB-Booster)
 // Types inconnus → lettre '?'. Renvoie la longueur de la chaîne.
 // ---------------------------------------------------------------------------
-uint8_t BoosterWatch_name(uint8_t type, uint8_t id, char *name) {
-    char letter;
+// Lettre du type (pour le nommage ID_X_nn et le JSON) : C, B, S, D, H...
+static char typeLetter(uint8_t type) {
     switch (type) {
-        case DCCB_TYPE_CONVERTER: letter = 'C'; break;
-        case DCCB_TYPE_BOOSTER:    letter = 'B'; break;
-        case DCCB_TYPE_SWITCH:     letter = 'S'; break;
-        case DCCB_TYPE_DETECTOR:    letter = 'D'; break;
-        case DCCB_TYPE_HUB:         letter = 'H'; break;
-        default:                   letter = '?'; break;
+        case DCCB_TYPE_CONVERTER: return 'C';
+        case DCCB_TYPE_BOOSTER:    return 'B';
+        case DCCB_TYPE_SWITCH:     return 'S';
+        case DCCB_TYPE_DETECTOR:    return 'D';
+        case DCCB_TYPE_HUB:         return 'H';
+        default:                   return '?';
     }
+}
+
+uint8_t BoosterWatch_name(uint8_t type, uint8_t id, char *name) {
+    char letter = typeLetter(type);
 
     // Le convertisseur est unique : pas de numéro
     if (type == DCCB_TYPE_CONVERTER) {
@@ -288,7 +293,11 @@ void BoosterWatch_dumpJson(Print &out) {
     uint32_t now = millis();
     bool first = true;
 
-    out.print("{\"boosters\":[");
+    // Tableau "modules" (et non "boosters") : il contient AUSSI les hubs
+    // ID_H_xx et futures cartes — chaque entrée porte son type en clair
+    // ("type":"B", "type":"H"...) pour qu'un outil PC ne dépende pas du
+    // champ "name" pour désambiguïser deux numéros identiques.
+    out.print("{\"modules\":[");
     for (uint8_t i = 0; i < DCCB_MAX_BOOSTERS; i++) {
         if (!s_boosters[i].used) continue;
         if (!first) out.print(",");
@@ -297,7 +306,7 @@ void BoosterWatch_dumpJson(Print &out) {
         BoosterWatch_name(DCCB_TYPE_BOOSTER, i + 1, name);
         BoosterWatch_stateName(s_boosters[i].state, st);
 
-        out.printf("{\"id\":%u,\"name\":\"%s\",\"st\":\"%s\","
+        out.printf("{\"type\":\"B\",\"id\":%u,\"name\":\"%s\",\"st\":\"%s\","
                    "\"fault\":%u,\"ok\":%u,\"last_ms\":%lu}",
                    i + 1, name, st,
                    s_boosters[i].faultCount, s_boosters[i].okCount,
@@ -311,8 +320,8 @@ void BoosterWatch_dumpJson(Print &out) {
         BoosterWatch_name(s_others[i].type, s_others[i].id, name);
         BoosterWatch_stateName(s_others[i].state, st);
 
-        out.printf("{\"id\":%u,\"name\":\"%s\",\"st\":\"%s\",\"last_ms\":%lu}",
-                   s_others[i].id, name, st,
+        out.printf("{\"type\":\"%c\",\"id\":%u,\"name\":\"%s\",\"st\":\"%s\",\"last_ms\":%lu}",
+                   typeLetter(s_others[i].type), s_others[i].id, name, st,
                    (unsigned long)(now - s_others[i].lastMs));
     }
     out.printf("],\"injecting\":%s}\n", s_injecting ? "true" : "false");

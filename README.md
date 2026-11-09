@@ -9,11 +9,10 @@ Le signal DCC provient de la sortie **EXT1/EXT2 (0–3.3 V)** de la centrale
 via un XOR SN74LVC1G86 sur GPIO 27.
 
 Basé sur les bibliothèques :
-- [prune74/CanUniversal](https://github.com/prune74/CanUniversal) (pour le bus CAN)
-- **[prune74/Ws2812Universal](https://github.com/prune74/Ws2812Universal) (pour les LED WS2812, architecture CFC)**
-Version « ISR » (GPIO + interruption) : [prune74/DCC_CAN-Booster](https://github.com/prune74/DCC_CAN-Booster).
+- [prune74/CanUniversal](https://github.com/prune74/CanUniversal) (bus CAN)
+- [prune74/Ws2812Universal](https://github.com/prune74/Ws2812Universal) (LED WS2812, architecture CFC)
 
----
+Version « ISR » (GPIO + interruption) : [prune74/DCC_CAN-Booster](https://github.com/prune74/DCC_CAN-Booster).
 
 ## Pourquoi le RMT ?
 
@@ -29,8 +28,6 @@ Pour un signal DCC « très précis », le RMT est la voie royale sur ESP32 :
 le CPU ne participe plus à la mesure, donc plus aucune source de gigue
 logicielle ne peut fausser les demi-bits.
 
----
-
 ## Architecture
 
 | Élément | Rôle |
@@ -44,18 +41,16 @@ logicielle ne peut fausser les demi-bits.
 | **Ws2812Universal (RMT TX, canal 0)** | Pilotage non bloquant des 3 LED d'état via la bibliothèque CFC |
 
 ```
-LaBox (CommandStation-EX)                ESP32                                              Bus CAN
-┌─────────────────────┐   EXT1/EXT2    ┌────────────────────────────────────────────────┐
-│  Sortie booster     │  0–3.3 V  ──►  │           XOR SN74LVC1G86 → GPIO27             │
-│  DCC + cutout       │                │                     │                          │
-└─────────────────────┘                │            RMT RX (matériel, 1µs)              │
-                                       │   rmtTask → queue → taskCan                    │ ──► 500 kbit/s
-                                       │   TWAI : TX=5, RX=4                            │     vers boosters aval
-                                       │ **Ws2812Universal : RMT TX canal 0 → GPIO 26** │
-                                       └────────────────────────────────────────────────┘
+LaBox (CommandStation-EX)                ESP32                        Bus CAN
+┌─────────────────────┐   EXT1/EXT2    ┌───────────────────────────┐
+│  Sortie booster     │  0–3.3 V  ──►  │ XOR SN74LVC1G86 → GPIO27  │
+│  DCC + cutout       │                │         │                 │
+└─────────────────────┘                │   RMT RX (matériel, 1µs)  │
+                                       │ rmtTask → queue → taskCan │ ──► 500 kbit/s
+                                       │ TWAI : TX=5, RX=4         │      vers boosters aval
+                                       │ Ws2812Universal: TX canal0│      (3 LED d'état → GPIO 26)
+                                       └───────────────────────────┘
 ```
-
----
 
 ## Câblage
 
@@ -70,8 +65,6 @@ LaBox (CommandStation-EX)                ESP32                                  
 Le filtre anti-glitch est ici **matériel** (dans le RMT) : un RC n'est plus
 indispensable, mais reste recommandé en environnement électrique bruyant
 (proximité de moteurs, boosters de puissance).
-
----
 
 ## Principe du décodage (NMRA S-9.1)
 
@@ -95,15 +88,13 @@ suivante — **aucun demi-bit n'est jamais perdu**.
 présence du cutout (ID 0x101) pour que le booster aval le régénère
 (nominal 454 µs) ou l'ignore. L'ID 0x103 est réservé à un usage futur.
 
----
-
 ## Protocole CAN (IDs 11 bits) — identique à DCC_CAN-Booster
 
 | ID | Contenu |
 | --- | --- |
 | `0x100` | Bloc de bits DCC : `data[0]` = N bits (1..16), puis 4 bits/octet, chaque nibble = `(bit << 1) \| phase` — DLC = `1 + ceil(N/2)` |
 | `0x101` | Cutout **réel** : `{ local, global }` — jamais émis en failsafe |
-| `0x102` | Télémétrie : `{ ID, TYPE, mA/10, mV/100, état }` (DLC 5) — ID = numéro du module dans son type (0 = convertisseur **ID_C**, 1..N = boosters **ID_B_xx**) ; TYPE : 0=C, 1=B, 2=S, 3=D ; état : 0=OK, 1=FAULT, 2=OVERHEAT, 3=OFF, 4=RETRY (réservé). DLC 4 accepté (anciens boosters → type B implicite) |
+| `0x102` | Télémétrie : `{ ID, TYPE, mA/10, mV/100, état }` (DLC 5) — ID = numéro du module dans son type (0 = convertisseur **ID_C**, 1..N = boosters **ID_B_xx**) ; TYPE : 0=C, 1=B, 2=S, 3=D, 5=H (hub de distribution), 4/6..255 libres ; état : 0=OK, 1=FAULT, 2=OVERHEAT, 3=OFF, 4=RETRY (réservé). DLC 4 accepté (anciens boosters → type B implicite) |
 | `0x103` | RailCom : adresse little-endian (réservé, non distribué) |
 
 ### Nommage des modules — ID_X_nn (adressage complet)
@@ -118,7 +109,8 @@ le convertisseur : le type devient la **lettre**, le numéro le suffixe :
 | 1 | `B` | `ID_B_01`…`ID_B_nn` | Boosters de puissance |
 | 2 | `S` | `ID_S_nn` | Aiguillages / accessoires (réservé, futures cartes) |
 | 3 | `D` | `ID_D_nn` | Détection d'occupation (réservé, futures cartes) |
-| 4–255 | `?` | — | Extensions futures |
+| 5 | `H` | `ID_H_01`…`ID_H_nn` | Hubs de distribution (projet DCC_HUB_DISTRIB-Booster) |
+| 4, 6–255 | `?` | — | Extensions futures |
 
 Chaque type dispose de **254 numéros** : le réseau peut accueillir 254
 boosters ET 254 aiguillages ET 254 détecteurs, etc., sans qu'aucun ID ne
@@ -135,13 +127,26 @@ via la commande série `boosters` :
 ID_B_01  OK       vu il y a 12 ms
 ID_B_02  FAULT    vu il y a 8 ms  [DEFAUT CONFIRME]
 ID_B_03  OFF      vu il y a 240 ms
+ID_H_01  OK       vu il y a 45 ms
+```
+
+Les modules non-booster (hubs `ID_H_xx`, futures cartes) sont suivis pour
+l'affichage uniquement : ils ne participent ni à la surveillance
+d'injection, ni au pire état aval (LED 3). Table dimensionnée par
+`DCCB_MAX_OTHERS` dans `Config.h` (au-delà : trames ignorées).
+
+La sortie JSON (`boosters json`) utilise le tableau `"modules"` avec un
+champ `"type"` explicite par entrée :
+
+```
+{"modules":[{"type":"B","id":3,"name":"ID_B_03","st":"OK","fault":0,
+"ok":0,"last_ms":123},{"type":"H","id":1,"name":"ID_H_01","st":"OK",
+"last_ms":56}],"injecting":false}
 ```
 
 Le bloc part : à 16 bits (trame pleine), sur cutout, ou après 500 µs de
 silence DCC. Les boosters aval voient **exactement le même protocole** que
 la version ISR : les deux modules sont interchangeables sur le bus.
-
----
 
 ## LED d'état WS2812 ×3 (GPIO 26)
 
@@ -165,17 +170,16 @@ priorité exclusive** : tout est visible simultanément :
 | | **Orange fixe** | Surchauffe signalée par un booster |
 | | **Éteint** | Boosters à l'arrêt (BOOSTER_OFF) |
 
-Le pilotage se fait par le **canal RMT TX n° 0** via la bibliothèque
-**[prune74/Ws2812Universal](https://github.com/prune74/Ws2812Universal)** (architecture CFC) :
-le signal 800 kHz est généré par le matériel, le CPU ne fait que mettre à jour
-le framebuffer via `Ws2812Bus` (non bloquant, < 0,2 % CPU).
-Le canal 7 reste dédié à la capture DCC, et le CAN (TWAI) est un
-périphérique totalement indépendant : **aucun impact sur le décodage ni
-sur le bus**. Câblage : data → GPIO 26, alimentation 5 V ou 3,3 V (masse
-commune), condensateur 100 nF près du strip recommandé. Gradation
-réglable via `DCCB_WS2812_BRIGHTNESS` dans `Config.h`.
-
----
+Le pilotage se fait par la bibliothèque
+**[prune74/Ws2812Universal](https://github.com/prune74/Ws2812Universal)**
+(canal **RMT TX n° 0**, via le provider `DccbWs2812Config.h`) : le signal
+800 kHz est généré par le matériel, le CPU ne fait que mettre à jour le
+framebuffer via `Ws2812Bus` — `setPixel` + `show()` **non bloquant**
+(< 0,2 % CPU). La gradation (`DCCB_WS2812_BRIGHTNESS`) est appliquée par
+la bibliothèque elle-même. Le canal 7 reste dédié à la capture DCC, et le
+CAN (TWAI) est un périphérique totalement indépendant : **aucun impact sur
+le décodage ni sur le bus**. Câblage : data → GPIO 26, alimentation 5 V ou
+3,3 V (masse commune), condensateur 100 nF près du strip recommandé.
 
 ## Arrêt d'urgence : injection vers LaBox (repli global du segment)
 
@@ -210,8 +214,6 @@ n'alimente que le convertisseur.
 Seuils réglables dans `Config.h` : `DCCB_INJECT_DAC_VALUE`,
 `DCCB_INJECT_CONFIRM_FRAMES`, `DCCB_INJECT_RELEASE_FRAMES`.
 
----
-
 ## Failsafe
 
 - Perte du signal DCC > 500 ms → bloc vidé, télémétrie `BOOSTER_OFF` (0x101
@@ -219,11 +221,27 @@ Seuils réglables dans `Config.h` : `DCCB_INJECT_DAC_VALUE`,
 - Retour du DCC → télémétrie `BOOSTER_OK`.
 - `bad > 0` en régime établi → état `BOOSTER_FAULT`.
 
----
+## 📚 Documentation compagnon (hors convertisseur)
+
+Tout ce qui ne concerne pas ce convertisseur — cahier des charges de la
+future carte booster aval (dont l'état RETRY 4), carte de gestion de
+canton (« pont JSON »), configuration par le bus (0x104/0x105 +
+persistance NVS), chiffres de dimensionnement et feuille de route du
+réseau — est regroupé dans le **document compagnon CFC** :
+
+> `CFC-Objectifs-Reseau.pdf` (généré depuis « CFC — Objectifs futurs &
+> spécifications du bus »).
+
+Pour l'architecture à hubs (LaBox ↔ ID_H_01/02 ↔ convertisseurs,
+injections TOR, timings coordonnés), voir **`LIAISON_CARTE.md`** à la
+racine du dépôt — le document d'interface multi-cartes du projet
+DCC_HUB_DISTRIB-Booster.
+
+Ce README ne documente donc que le convertisseur lui-même.
 
 ## Compilation (VSCode + PlatformIO)
 
-```bash
+```
 pio run
 pio run -t upload
 pio device monitor
@@ -231,22 +249,20 @@ pio device monitor
 
 `platformio.ini` épingle `espressif32@6.9.0` (arduino-esp32 2.0.x) pour
 garantir le driver RMT legacy (`driver/rmt.h`). **Dépendances** :
+
 ```ini
 lib_deps =
     prune74/CanUniversal
     prune74/Ws2812Universal  # Pilotage des LED WS2812 (architecture CFC)
 ```
-Configuration matérielle : `src/Pins.h` (broches), `src/Config.h` (canal RMT, tick, filtre, seuils, IDs, failsafe, bitrate).
-
----
 
 ## Commandes série (115200 bauds)
 
 ```
 stats            statistiques DCC + événements perdus + état CAN
 stats json       idem au format JSON (une ligne, pour outil PC)
-boosters         boosters aval vus sur le bus (noms ID_B_xx, état, dernière trame)
-boosters json    idem au format JSON, pour journalisation/supervision PC
+boosters         modules vus sur le bus (ID_B_xx + ID_H_xx..., état, dernière trame)
+boosters json    idem au format JSON (tableau "modules"), pour supervision PC
 inject on|off    test manuel de l'injection DAC → LaBox (voltmètre sur GPIO 25)
 reset            redémarrage ESP32
 can on|off       sniffer CAN
@@ -255,8 +271,6 @@ can filter 0x100 filtre le sniffer sur un ID (can filter off pour retirer)
 
 **Diagnostic sain** : `dropped=0` et `bad` stable (quelques unités au
 démarrage le temps de la première synchronisation, puis plus rien).
-
----
 
 ## Limites connues
 
@@ -267,8 +281,6 @@ démarrage le temps de la première synchronisation, puis plus rien).
 - Le cutout est transporté borné (START+END consécutifs avec la durée
   mesurée) : le booster aval régénère un cutout nominal — aucun contenu
   RailCom n'est transporté.
-
----
 
 ## Auteur
 
