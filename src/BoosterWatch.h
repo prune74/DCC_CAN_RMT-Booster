@@ -21,15 +21,15 @@
 // OK des autres boosters ne remettent PAS son compteur à zéro.
 //
 // Après confirmation, le convertisseur INJECTE via le DAC (GPIO 25) une
-// tension supérieure au seuil de LaBox sur l'entrée intensité de la sortie
-// EXT (GPIO 35 = EXT1, GPIO 39 = EXT2 côté LaBox) : LaBox détecte une
-// "surintensité" et coupe le DCC du segment — arrêt d'urgence global du
-// segment CAN (repli, la protection locale reste assurée par chaque booster).
+// tension ~3,04 V lue comme NIVEAU HAUT (TOR) sur le GPIO d'entrée direct
+// du hub du district (DCC_HUB_DISTRIB-Booster) : le hub COUPE LE DISTRICT
+// (DS_COUPE) — repli global, la protection locale reste assurée par chaque
+// booster. (Câblage autonome hors hub : broche intensité LaBox GPIO 35/39,
+// voir README — le firmware est identique dans les deux cas.)
 //
-// L'injection est MAINTENUE tant que le défaut persiste (LaBox réessaie
-// sinon toutes les 40 ms → 10 s), et RELÂCHÉE quand TOUS les boosters
-// défaillants ont envoyé DCCB_INJECT_RELEASE_FRAMES trames OK consécutives :
-// LaBox rétablit le DCC automatiquement.
+// L'injection est MAINTENUE tant que le défaut persiste, et RELÂCHÉE quand
+// TOUS les boosters défaillants ont envoyé DCCB_INJECT_RELEASE_FRAMES trames
+// OK consécutives : le hub rétablit le district automatiquement.
 // ---------------------------------------------------------------------------
 
 void BoosterWatch_begin();                          // DAC à 0 V au démarrage

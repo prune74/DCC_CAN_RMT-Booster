@@ -89,7 +89,7 @@ void cmd_inject(const String &args) {
     } else if (args == "off") {
         BoosterWatch_forceInjection(false);
     } else {
-        Serial.println("Usage: inject on|off  (test du câblage DAC -> LaBox)");
+        Serial.println("Usage: inject on|off  (test du câblage DAC -> hub)");
         Serial.printf("Injection actuelle: %s\n",
                       BoosterWatch_injecting() ? "ACTIVE" : "inactive");
     }

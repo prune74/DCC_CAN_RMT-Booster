@@ -104,15 +104,18 @@
 #define DCCB_WS2812_BRIGHTNESS 64 // gradation globale, 0..255
 
 // ---------------------------------------------------------------------------
-// Arrêt d'urgence par injection (repli global vers LaBox)
+// Arrêt d'urgence par injection (repli global vers le hub du district)
 // ---------------------------------------------------------------------------
 // Après DCCB_INJECT_CONFIRM_FRAMES trames FAULT/OVERHEAT consécutives reçues
 // en télémétrie (0x102) de boosters aval, le convertisseur injecte via le DAC
-// (GPIO 25) une tension > seuil de LaBox sur l'entrée intensité de la sortie
-// EXT : LaBox détecte une "surintensité" et coupe le DCC du segment.
+// (GPIO 25) une tension lue comme NIVEAU HAUT (TOR) sur un GPIO d'entrée
+// direct du hub (DCC_HUB_DISTRIB-Booster) : le hub COUPE LE DISTRICT
+// (DS_COUPE — anti-rebond 20 ms côté hub).
 // L'injection est maintenue tant que le défaut persiste, relâchée après
-// DCCB_INJECT_RELEASE_FRAMES trames OK consécutives (LaBox rétablit seule).
-#define DCCB_INJECT_DAC_VALUE 235      // ~3,04 V (seuil LaBox : ~2,52 V)
+// DCCB_INJECT_RELEASE_FRAMES trames OK consécutives (le hub rétablit seul).
+#define DCCB_INJECT_DAC_VALUE 235      // ~3,04 V : niveau haut TOR lu par le
+                                      // GPIO d'entrée du hub (polling 2 ms) ;
+                                      // historique seuil LaBox : ~2,52 V
 #define DCCB_INJECT_CONFIRM_FRAMES 3   // trames FAULT consécutives → injection
 #define DCCB_INJECT_RELEASE_FRAMES 3  // trames OK consécutives → relâchement
 #define DCCB_TELEMETRY_STALE_MS 3000   // au-delà : état boosters "inconnu"

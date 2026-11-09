@@ -46,7 +46,8 @@ static OtherInfo s_others[DCCB_MAX_OTHERS];
 static void setInjection(bool on) {
     if (on == s_injecting) return;
     s_injecting = on;
-    // DAC GPIO 25 : 235/255 × 3,3 V ≈ 3,04 V > seuil LaBox (~2,52 V)
+    // DAC GPIO 25 : 235/255 × 3,3 V ≈ 3,04 V → niveau haut TOR lu par le
+    // GPIO d'entrée du hub, qui coupe le district
     dacWrite((uint8_t)PIN_DAC_INJECT, on ? DCCB_INJECT_DAC_VALUE : 0);
 }
 
@@ -158,7 +159,7 @@ void BoosterWatch_onFailsafe(bool active) {
 
 // ---------------------------------------------------------------------------
 // Injection MANUELLE (commande CLI "inject on|off") : test du câblage
-// DAC → entrée intensité LaBox SANS attendre un vrai défaut aval.
+// DAC → GPIO d'entrée du hub SANS attendre un vrai défaut aval.
 // Tant que s_forced est posé, la logique automatique ne peut pas relâcher
 // l'injection — on teste dans des conditions maîtrisées.
 // ---------------------------------------------------------------------------

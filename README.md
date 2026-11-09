@@ -4,9 +4,13 @@ Module **Convertisseur DCC → CAN** à **capture matérielle RMT**.
 L'ESP32 relit les durées du signal DCC enregistrées par le périphérique
 **RMT** (réception, résolution 1 µs, filtre anti-glitch intégré) et les
 retransmet sur le bus CAN (TWAI natif, TX GPIO 5 / RX GPIO 4, 500 kbit/s).
-Le signal DCC provient de la sortie **EXT1/EXT2 (0–3.3 V)** de la centrale
-[LaBox / CommandStation-EX](https://github.com/Locoduino/CommandStation-EX-LaBox),
-via un XOR SN74LVC1G86 sur GPIO 27.
+Le signal DCC provient d'un **hub de distribution
+[DCC_HUB_DISTRIB-Booster](https://github.com/prune74/DCC_HUB_DISTRIB-Booster)**
+(ID_H_xx), qui relaie les sorties **EXT1/EXT2 (0–3.3 V)** de la centrale
+[LaBox / CommandStation-EX](https://github.com/Locoduino/CommandStation-EX-LaBox)
+— le convertisseur est **toujours** connecté à un hub, via un XOR
+SN74LVC1G86 sur GPIO 27. Le document d'interface multi-cartes est
+`LIAISON_CARTE.md` à la racine du dépôt du hub.
 
 Basé sur les bibliothèques :
 - [prune74/CanUniversal](https://github.com/prune74/CanUniversal) (bus CAN)
@@ -41,26 +45,26 @@ logicielle ne peut fausser les demi-bits.
 | **Ws2812Universal (RMT TX, canal 0)** | Pilotage non bloquant des 3 LED d'état via la bibliothèque CFC |
 
 ```
-LaBox (CommandStation-EX)                ESP32                        Bus CAN
-┌─────────────────────┐   EXT1/EXT2    ┌───────────────────────────┐
-│  Sortie booster     │  0–3.3 V  ──►  │ XOR SN74LVC1G86 → GPIO27  │
-│  DCC + cutout       │                │         │                 │
-└─────────────────────┘                │   RMT RX (matériel, 1µs)  │
-                                       │ rmtTask → queue → taskCan │ ──► 500 kbit/s
-                                       │ TWAI : TX=5, RX=4         │      vers boosters aval
-                                       │ Ws2812Universal: TX canal0│      (3 LED d'état → GPIO 26)
-                                       └───────────────────────────┘
+LaBox (CommandStation-EX)    Hub DCC_HUB_DISTRIB    ESP32                        Bus CAN
+┌─────────────────────┐   ┌──────────────────┐   ┌───────────────────────────┐
+│  Sortie booster     │   │ Hub A (ID_H_01)  │   │ XOR SN74LVC1G86 → GPIO27  │
+│  DCC + cutout       │──►│ distribution DCC │──►│        │                  │
+│  EXT1/EXT2          │   │ 8 GPIO TOR ←     │◄──│ RMT RX (matériel, 1µs)    │
+└─────────────────────┘   │ injection →      │   │ rmtTask → queue → taskCan │ ──► 500 kbit/s
+                          │ coupe district   │   │ TWAI : TX=5, RX=4         │      vers boosters aval
+                          └──────────────────┘   │ Ws2812Universal: TX canal0│      (3 LED d'état → GPIO 26)
+                                                 └───────────────────────────┘
 ```
 
 ## Câblage
 
 | Signal | Origine | ESP32 | Remarques |
 | --- | --- | --- | --- |
-| DCC logique | LaBox EXT1/EXT2 (0–3.3 V) via XOR SN74LVC1G86 | GPIO 27 | **Masse commune** LaBox ↔ ESP32 obligatoire |
+| DCC logique | Sortie DCC du hub (relais EXT1/EXT2 LaBox, 0–3.3 V) via XOR SN74LVC1G86 | GPIO 27 | **Masse commune** hub ↔ ESP32 obligatoire |
 | CAN TX | TWAI natif | GPIO 5 | Vers transceiver CAN (TJA1050/SN65HVD230…) |
 | CAN RX | TWAI natif | GPIO 4 | |
 | LED d'état WS2812 ×3 | — | GPIO 26 | Strip 3 LED : LED1 = DCC, LED2 = CAN, LED3 = boosters aval |
-| Injection arrêt d'urgence | DAC natif | GPIO 25 | Vers entrée intensité LaBox (GPIO 35 = EXT1, GPIO 39 = EXT2) via résistance 4,7–10 kΩ |
+| Injection arrêt d'urgence | DAC natif | GPIO 25 | Vers l'entrée **GPIO TOR du hub** (une des 8 entrées HUB_INJ_PINS du district) via résistance 4,7–10 kΩ (câblage direct autonome : broche intensité LaBox GPIO 35/39) |
 
 Le filtre anti-glitch est ici **matériel** (dans le RMT) : un RC n'est plus
 indispensable, mais reste recommandé en environnement électrique bruyant
@@ -181,7 +185,13 @@ CAN (TWAI) est un périphérique totalement indépendant : **aucun impact sur
 le décodage ni sur le bus**. Câblage : data → GPIO 26, alimentation 5 V ou
 3,3 V (masse commune), condensateur 100 nF près du strip recommandé.
 
-## Arrêt d'urgence : injection vers LaBox (repli global du segment)
+## Arrêt d'urgence : injection vers le hub du district (repli global)
+
+Le convertisseur est **toujours** connecté à un hub
+(DCC_HUB_DISTRIB-Booster) : l'injection ne va PAS à la broche intensité
+de LaBox, elle est lue sur un **GPIO d'entrée direct du hub** (polling
+2 ms, anti-rebond 20 ms) qui coupe alors le district (DS_COUPE). Le firmware du convertisseur est
+**inchangé** par rapport au câblage direct historique.
 
 Les boosters aval publient leur état sur l'ID `0x102` :
 `{ ID, TYPE, mA/10, mV/100, état }`. **Chaque booster a un couple unique
@@ -197,19 +207,22 @@ locaux — ignoré). Le convertisseur émet sa propre télémétrie avec l'ID 0.
 2. **Niveau 2 (constat)** : la LED 3 reflète l'état aval.
 3. **Niveau 3 (repli global)** : après **3 trames FAULT/OVERHEAT
    consécutives**, le convertisseur injecte via le **DAC (GPIO 25)** une
-   tension ~3,04 V sur l'entrée intensité de la sortie EXT de LaBox
-   (seuil LaBox : 2500 mA ÷ 0,80 = 2,52 V). LaBox détecte une
-   "surintensité" et **coupe le DCC du segment entier**.
-4. L'injection est **maintenue** tant que le défaut persiste (sinon
-   LaBox réessaie de rétablir le DCC avec backoff 40 ms → 10 s), et
-   **relâchée** après 3 trames OK consécutives : LaBox rétablit le DCC
-   automatiquement.
+   tension ~3,04 V, lue comme **niveau haut** sur le GPIO d'entrée du
+   hub (anti-rebond ≥ 20 ms) : celui-ci **coupe le district** (DS_COUPE).
+4. L'injection est **maintenue** tant que le défaut persiste, et
+   **relâchée** après 3 trames OK consécutives : le hub rétablit le
+   district. (Le failsafe DCC relâche aussi l'injection et remet les
+   compteurs à zéro — voir `BoosterWatch_onFailsafe` — pour éviter un
+   district bloqué sans fin si le signal disparaît pendant le défaut.)
 
-Câblage : GPIO 25 → résistance série **4,7–10 kΩ** → broche intensité
-de LaBox (GPIO 35 pour EXT1, GPIO 39 pour EXT2). Ne jamais dépasser
-3,3 V. La lecture d'intensité réelle de cette sortie EXT devient
-inutilisable (elle voit l'injection) — sans importance si cette sortie
-n'alimente que le convertisseur.
+**Câblage (via hub)** : GPIO 25 → résistance série **4,7–10 kΩ** →
+GPIO d'entrée du hub du district (HUB_INJ_PINS, une broche par district).
+Ne jamais dépasser 3,3 V.
+
+*Note historique (câblage direct autonome, sans hub)* : GPIO 25 →
+résistance 4,7–10 kΩ → broche intensité de LaBox (GPIO 35 = EXT1,
+GPIO 39 = EXT2, seuil 2500 mA ÷ 0,80 = 2,52 V). Dans ce cas la lecture
+d'intensité réelle de la sortie EXT devient inutilisable.
 
 Seuils réglables dans `Config.h` : `DCCB_INJECT_DAC_VALUE`,
 `DCCB_INJECT_CONFIRM_FRAMES`, `DCCB_INJECT_RELEASE_FRAMES`.
@@ -263,7 +276,7 @@ stats            statistiques DCC + événements perdus + état CAN
 stats json       idem au format JSON (une ligne, pour outil PC)
 boosters         modules vus sur le bus (ID_B_xx + ID_H_xx..., état, dernière trame)
 boosters json    idem au format JSON (tableau "modules"), pour supervision PC
-inject on|off    test manuel de l'injection DAC → LaBox (voltmètre sur GPIO 25)
+inject on|off    test manuel de l'injection DAC → hub (voltmètre sur GPIO 25)
 reset            redémarrage ESP32
 can on|off       sniffer CAN
 can filter 0x100 filtre le sniffer sur un ID (can filter off pour retirer)
