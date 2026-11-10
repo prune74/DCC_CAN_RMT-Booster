@@ -269,17 +269,41 @@ lib_deps =
     prune74/Ws2812Universal  # Pilotage des LED WS2812 (architecture CFC)
 ```
 
-## Commandes série (115200 bauds)
+## 🎯 Commandes série (115200 bauds)
 
+| Commande | Description |
+|----------|-------------|
+| `stats` | Affiche les statistiques DCC (b0, b1, cutout, bad) + événements perdus + état CAN |
+| `stats json` | Idem au format JSON (une ligne, pour outil PC) |
+| `boosters` | Liste les modules vus sur le bus (ID_B_xx, ID_H_xx...) avec état et dernière trame |
+| `boosters json` | Idem au format JSON (tableau `"modules"`), pour supervision PC |
+| `inject on\|off` | Test manuel de l'injection DAC → hub (voltmètre sur GPIO 25) |
+| `reset` | Redémarre l'ESP32 |
+| `can on\|off` | Active/désactive le moniteur CAN (sniffer) |
+| `can filter <hex>` | Filtre le sniffer sur un ID CAN (ex: `0x100`) |
+| `can filter off` | Désactive le filtre CAN |
+| `menu` | **Affiche ce tableau des commandes disponibles** |
+
+**Exemples :**
 ```
-stats            statistiques DCC + événements perdus + état CAN
-stats json       idem au format JSON (une ligne, pour outil PC)
-boosters         modules vus sur le bus (ID_B_xx + ID_H_xx..., état, dernière trame)
-boosters json    idem au format JSON (tableau "modules"), pour supervision PC
-inject on|off    test manuel de l'injection DAC → hub (voltmètre sur GPIO 25)
-reset            redémarrage ESP32
-can on|off       sniffer CAN
-can filter 0x100 filtre le sniffer sur un ID (can filter off pour retirer)
+> stats
+STATS: b0=12345 b1=6789 cutout=23 bad=1
+Dropped events: 0
+CAN0: valid
+
+> boosters
+ID_B_01  OK       vu il y a 12 ms
+ID_B_02  FAULT    vu il y a 8 ms  [DEFAUT CONFIRME]
+ID_H_01  OK       vu il y a 45 ms
+
+> menu
+Commandes disponibles :
+  stats [json]       - Affiche les statistiques DCC
+  boosters [json]    - Affiche l'état des boosters
+  inject on|off      - Test du câblage DAC -> hub
+  reset              - Redémarre l'ESP32
+  can on             - Active le moniteur CAN
+  ...
 ```
 
 **Diagnostic sain** : `dropped=0` et `bad` stable (quelques unités au
