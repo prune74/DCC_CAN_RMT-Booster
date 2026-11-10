@@ -95,6 +95,21 @@ void cmd_inject(const String &args) {
     }
 }
 
+// ---------------- MENU ----------------
+
+void cmd_menu(const String&) {
+    Serial.println("Commandes disponibles :");
+    Serial.println("  stats [json]       - Affiche les statistiques DCC");
+    Serial.println("  boosters [json]    - Affiche l'état des boosters");
+    Serial.println("  inject on|off      - Test du câblage DAC -> hub");
+    Serial.println("  reset              - Redémarre l'ESP32");
+    Serial.println("  can on             - Active le moniteur CAN");
+    Serial.println("  can off            - Désactive le moniteur CAN");
+    Serial.println("  can filter <hex>   - Filtre les messages CAN (ex: 1A3)");
+    Serial.println("  can filter off     - Désactive le filtre CAN");
+    Serial.println("  menu               - Affiche ce menu");
+}
+
 // ---------------------------------------------------------------------------
 // Tableau des commandes
 // ---------------------------------------------------------------------------
@@ -106,6 +121,7 @@ static const CliCommand commands[] = {
     { "can on",       cmd_can_on },
     { "can off",      cmd_can_off },
     { "can filter",   cmd_can_filter },
+    { "menu",         cmd_menu },
 };
 
 // ---------------------------------------------------------------------------
