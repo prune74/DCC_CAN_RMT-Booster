@@ -9,7 +9,7 @@ enum BoosterState : uint8_t {
     BOOSTER_OFF      = 3
 };
 
-// --- Bloc de bits DCC (empaquetage, 16 bits max) ---------------------------
+// --- Bloc de bits DCC (empaquetage, 14 bits maximum par trame) ------------
 bool CanBooster_packDccBit(uint8_t bit, uint8_t phase);
 bool CanBooster_flushDccBits();
 

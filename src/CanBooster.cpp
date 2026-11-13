@@ -2,17 +2,18 @@
 #include "Config.h"
 
 // -----------------------------------------------------------------------------
-// Empaquetage des bits DCC — 16 bits max par trame
+// Empaquetage des bits DCC — 14 bits max par trame
 // -----------------------------------------------------------------------------
-//   data[0]    = N (nombre de bits réellement emballés, 1..16)
-//   data[1..8] = bits, 4 par octet, chaque nibble = (bit << 1) | phase
-//   DLC        = 1 + ceil(N / 2)
+//   data[0]   = N (nombre de bits réellement emballés, 1..14)
+//   data[1..7] = bits, 4 par octet, chaque nibble = (bit << 1) | phase
+//               premier bit dans le nibble bas
+//   DLC       = 1 + ceil(N / 2), au maximum 8 octets
 //
 // Le bloc part quand il est plein, sur cutout, ou après un idle
 // (DCCB_BLOCK_FLUSH_TIMEOUT_US) pour ne pas ajouter de latence en fin de trame.
 // -----------------------------------------------------------------------------
-static uint8_t s_blockN = 0;        // nibbles remplis (1 nibble = 1 bit, 0..16)
-static uint8_t s_block[9];          // 1 octet compteur + 8 octets de bits
+static uint8_t s_blockN = 0; // nibbles remplis (1 nibble = 1 bit, 0..14)
+static uint8_t s_block[8];   // 1 octet compteur + 7 octets de bits
 
 bool CanBooster_flushDccBits() {
     if (s_blockN == 0) return true;           // rien à envoyer
@@ -30,7 +31,7 @@ bool CanBooster_flushDccBits() {
     bool ok = CanBus::bus(0).send(msg);
 
     s_blockN = 0;                             // bloc réinitialisé
-    for (uint8_t i = 1; i < 9; i++) s_block[i] = 0;
+    for (uint8_t i = 1; i < sizeof(s_block); i++) s_block[i] = 0;
 
     return ok;
 }
@@ -45,7 +46,7 @@ bool CanBooster_packDccBit(uint8_t bit, uint8_t phase) {
     }
     s_blockN++;
 
-    // 16 nibbles = 8 octets de données : capacité maximale de la trame
+    // 14 nibbles = 7 octets de bits + 1 compteur : DLC 8
     if (s_blockN >= DCCB_BITS_PER_BLOCK) {
         return CanBooster_flushDccBits();              // bloc plein → envoi
     }

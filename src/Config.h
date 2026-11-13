@@ -11,8 +11,8 @@
 // ---------------------------------------------------------------------------
 // CAN IDs (identiques à DCC_CAN-Booster)
 // ---------------------------------------------------------------------------
-#define DCCB_CAN_ID_DCC_BLOCK 0x100 // BLOC de bits DCC (jusqu'à 16 bits)
-                                    // data[0]  = nombre de bits N (1..16)
+#define DCCB_CAN_ID_DCC_BLOCK 0x100 // BLOC de bits DCC (jusqu'à 14 bits)
+                                    // data[0]  = nombre de bits N (1..14)
                                     // data[1..]= bits, 4 par octet,
                                     //            chaque nibble = (bit << 1) | phase
 #define DCCB_CAN_ID_CUTOUT 0x101    // cutout { local, global } — cutout RÉEL uniquement
@@ -29,9 +29,9 @@
 // ---------------------------------------------------------------------------
 #define DCCB_SEND_RAW_BITS 0        // 0 = empaquetage (défaut), 1 = brut (debug)
 
-// Nombre maximum de bits DCC par trame CAN : 1 bit = 1 nibble,
-// 16 bits = 8 octets de données (DLC max). Ne pas dépasser.
-#define DCCB_BITS_PER_BLOCK 16
+// Une trame CAN standard transporte au maximum 8 octets :
+// 1 octet compteur + ceil(N/2) octets empaquetés, donc N <= 14.
+#define DCCB_BITS_PER_BLOCK 14
 
 // Anti-latence : si aucun bit n'arrive pendant ce délai (µs), le bloc
 // partiel est envoyé tel quel (fin de trame DCC, etc.)
@@ -157,7 +157,7 @@
 #define DCCB_MAX_BOOSTERS 32
 
 // Nombre maximum de modules NON-booster suivis pour l'affichage (hubs
-// ID_H_xx, futures cartes ID_S_nn/ID_D_nn...). Ils ne participent ni à
-// la surveillance d'injection, ni au pire état aval ; au-delà de cette
-// valeur, leurs trames sont ignorées silencieusement.
+// ID_H_xx, futures cartes ID_S_nn/ID_D_nn...). Ils ne participent ni à la
+// surveillance d'injection, ni au pire état aval ; au-delà de cette valeur,
+// leurs trames sont ignorées silencieusement.
 #define DCCB_MAX_OTHERS 8
